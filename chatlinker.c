@@ -1,4 +1,4 @@
-/* Á¬½Ó·şÎñÆ÷ºÍ¿Í»§»úµÄº¯Êı */
+//Chá»©c nÄƒng káº¿t ná»‘i mÃ¡y chá»§ vÃ  mÃ¡y khÃ¡ch
 
 #include <stdio.h>
 #include <fcntl.h>
@@ -12,45 +12,42 @@
 #include <time.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "common.h"
 
 /*
-  Îª·şÎñÆ÷½ÓÊÕ¿Í»§¶ËÇëÇó×ö×¼±¸£¬
-  ÕıÈ··µ»Ø socket ÎÄ¼şÃèÊö·û
-  ´íÎó·µ»Ø -1
+ Chuáº©n bá»‹ mÃ¡y chá»§ cho cÃ¡c yÃªu cáº§u cá»§a khÃ¡ch hÃ ng,
+Â Â  Tráº£ láº¡i chÃ­nh xÃ¡c mÃ´ táº£ táº­p tin á»• cáº¯m
+Â Â  Lá»—i tráº£ vá» -1
 */
-int startserver()
+int startserver(char *port)
 {
-  int     sd;      /* socket ÃèÊö·û */
-  int     myport;  /* ·şÎñÆ÷¶Ë¿Ú */
-  const char *  myname;  /* ±¾µØÖ÷»úµÄÈ«³Æ */
-
-  char 	  linktrgt[MAXNAMELEN];
-  char 	  linkname[MAXNAMELEN];
+  int     sd;      /* socket mÃ´ táº£ */
+  int     myport;  /* Cá»•ng mÃ¡y chá»§ */
+  const char *  myname;  /* TÃªn Ä‘áº§y Ä‘á»§ cá»§a localhosst  */
 
   /*
-	µ÷ÓÃ socket º¯Êı´´½¨ TCP socket ÃèÊö·û
+	Gá»i hÃ m socket Ä‘á»ƒ táº¡o mÃ´ táº£ socket TCP
   */
   sd = socket(PF_INET, SOCK_STREAM, 0);
 
   /*
-    µ÷ÓÃbindº¯Êı½«Ò»¸ö±¾µØµØÖ·Ö¸ÅÉ¸ø socket
+   Gá»i bind Ä‘á»ƒ gÃ¡n Ä‘á»‹a chá»‰ cá»¥c bá»™ cho socket 
   */
 
   struct sockaddr_in server_address;
   server_address.sin_family = AF_INET;
-  server_address.sin_addr.s_addr = htonl(INADDR_ANY); /* Í¨ÅäµØÖ· INADDR_ANY ±íÊ¾IPµØÖ·Îª 0.0.0.0£¬
-													  ÄÚºËÔÚÌ×½Ó×Ö±»Á¬½ÓºóÑ¡ÔñÒ»¸ö±¾µØµØÖ·
-													  htonlº¯Êı ÓÃÓÚ½« INADDR_ANY ×ª»»ÎªÍøÂç×Ö½ÚĞò */
-  server_address.sin_port = htons(0);  /* Ö¸ÅÉÎªÍ¨Åä¶Ë¿Ú 0£¬µ÷ÓÃ bind º¯ÊıºóÄÚºË½«ÈÎÒâÑ¡ÔñÒ»¸öÁÙÊ±¶Ë¿Ú */
+  server_address.sin_addr.s_addr = htonl(INADDR_ANY); 
+  /*HÃ m htonl Ä‘Æ°á»£c sá»­ dá»¥ng Ä‘á»ƒ chuyá»ƒn Ä‘á»•i INADDR_ANY sang thá»© tá»± byte máº¡ng  */
+  server_address.sin_port = htons(atoi(port));
 
   bind(sd, (struct sockaddr *) &server_address, sizeof(server_address));
 
-  /* µ÷ÓÃlisten ½«·şÎñÆ÷¶Ë socket ÃèÊö·û sd ÉèÖÃÎª±»¶¯µØ¼àÌı×´Ì¬£¬²¢ÉèÖÃ½ÓÊÜ¶ÓÁĞµÄ³¤¶ÈÎª20 */
+  /*Gá»i listen Ä‘á»ƒ Ä‘áº·t sd  cá»§a socket phÃ­a mÃ¡y chá»§ sang tráº¡ng thÃ¡i nghe thá»¥ Ä‘á»™ng vÃ  Ä‘áº·t Ä‘á»™ dÃ i cá»§a hÃ ng Ä‘á»£i cháº¥p nháº­n thÃ nh 20 */
   listen(sd, 20);
 
   /*
-    µ÷ÓÃ getsockname¡¢gethostname ºÍ gethostbyname È·¶¨±¾µØÖ÷»úÃûºÍ·şÎñÆ÷¶Ë¿ÚºÅ
+    Gá»i getsockname, gethostname vÃ  gethostbyname Ä‘á»ƒ xÃ¡c Ä‘á»‹nh tÃªn mÃ¡y chá»§ cá»¥c bá»™ vÃ  sá»‘ cá»•ng mÃ¡y chá»§.
   */
 
   char hostname[MAXNAMELEN];
@@ -65,76 +62,45 @@ int startserver()
 
   getsockname(sd, (struct sockaddr *) &server_address, &len);
 
-  myname = h->h_name;
+  // myname = h->h_name;
   myport = ntohs(server_address.sin_port);
-
-  /* ÔÚ¼ÒÄ¿Â¼ÏÂ´´½¨·ûºÅÁ´½Ó'.chatport'Ö¸Ïòlinktrgt */
-  sprintf(linktrgt, "%s:%d", myname, myport);
-  sprintf(linkname, "%s/%s", getenv("HOME"), PORTLINK); /* ÔÚÍ·ÎÄ¼ş common.h ÖĞ£º
-														#define PORTLINK ".chatport" */
-  if (symlink(linktrgt, linkname) != 0) {
-    fprintf(stderr, "error : server already exists\n");
-    return(-1);
+  if(myport!=atoi(port)){
+    printf("error: server already exist!\n");
+    exit(0);
   }
 
-  /* ×¼±¸½ÓÊÜ¿Í»§¶ËÇëÇó */
-  printf("admin: started server on '%s' at '%d'\n",
-	 myname, myport);
+  /*Sáºµn sÃ ng cháº¥p nháº­n yÃªu cáº§u cá»§a khÃ¡ch hÃ ng */
+  // printf("admin: started server on '%s' at '%d'\n",
+	//  myname, myport);
+   printf("admin: started at port: '%d'\n",
+	 myport);
   return(sd);
 }
 
 /*
-  ºÍ·şÎñÆ÷½¨Á¢Á¬½Ó£¬ÕıÈ··µ»Ø socket ÃèÊö·û£¬
-  Ê§°Ü·µ»Ø  -1
+  Káº¿t ná»‘i Ä‘áº¿n mÃ¡y chá»§, tráº£ vá» socket Ä‘Ãºng.
+  Tháº¥t báº¡i tráº£ vá»  -1
 */
-int hooktoserver()
+int hooktoserver(char* port, char* addr)
 {
 	int sd;                 
 
-	char linkname[MAXNAMELEN];
-	char linktrgt[MAXNAMELEN];
-	char *servhost;
-	char *servport;
-	int bytecnt;
-
-  /* »ñÈ¡·şÎñÆ÷µØÖ· */
-  sprintf(linkname, "%s/%s", getenv("HOME"), PORTLINK);
-  bytecnt = readlink(linkname, linktrgt, MAXNAMELEN);
-  if (bytecnt == -1) 
-	{
-		fprintf(stderr, "error : no active chat server\n");
-		return(-1);
-	}
-
-	linktrgt[bytecnt] = '\0';
-
-	/* »ñµÃ·şÎñÆ÷ IP µØÖ·ºÍ¶Ë¿ÚºÅ */
-	servport = index(linktrgt, ':');
-	*servport = '\0';
-	servport++;
-	servhost = linktrgt;
-
-	/* »ñµÃ·şÎñÆ÷ IP µØÖ·µÄ unsigned short ĞÎÊ½ */
-	unsigned short number = (unsigned short) strtoul(servport, NULL, 0);
-
 	/*
-	µ÷ÓÃº¯Êı socket ´´½¨ TCP Ì×½Ó×Ö
+	Gá»i socket Ä‘á»ƒ táº¡o káº¿t ná»‘i TCP
 	*/
 
 	sd = socket(AF_INET, SOCK_STREAM, 0);
 	
 	/*
-	µ÷ÓÃ gethostbyname() ºÍ connect()Á¬½Ó 'servhost' µÄ 'servport' ¶Ë¿Ú
+Gá»i gethostbyname () vÃ  connect () Ä‘á»ƒ káº¿t ná»‘i vá»›i cá»•ng 'servport' cá»§a 'servhost'
 	*/
 	struct hostent *hostinfo;
-	struct sockaddr_in address;
+	struct sockaddr_in address; // thong tin dia chi server
 
-	hostinfo = gethostbyname(servhost); /* µÃµ½·şÎñÆ÷Ö÷»úÃû */
-	address.sin_addr = *(struct in_addr *) *hostinfo->h_addr_list;
+	// hostinfo = gethostbyname(servhost); /*TÃªn mÃ¡y chá»§ */
+	address.sin_addr.s_addr = inet_addr(addr);
 	address.sin_family = AF_INET;
-	address.sin_port = htons(number);
-
-  
+	address.sin_port = htons(atoi(port));
 
 	if (connect(sd, (struct sockaddr *) &address, sizeof(address)) < 0)
 	{
@@ -142,19 +108,19 @@ int hooktoserver()
 		exit(1);
 	}
 
-	/* Á¬½Ó³É¹¦ */
-	printf("admin: connected to server on '%s' at '%s'\n",
-		servhost, servport);
+	/* Káº¿t ná»‘i thÃ nh cÃ´ng */
+	printf("admin: connected to server at port: '%s'\n",
+	port);
 	return(sd);
 }
 
-/* ´ÓÄÚºË¶ÁÈ¡Ò»¸öÌ×½Ó×ÖµÄĞÅÏ¢ */
+/* Äá»c thÃ´ng tin vá» má»™t á»• cáº¯m tá»« kernel */
 int readn(int sd, char *buf, int n)
 {
   int     toberead;
   char *  ptr;
 
-  toberead = n;
+  toberead = n; // so byte can ghi
   ptr = buf;
   while (toberead > 0) {
     int byteread;
@@ -162,7 +128,7 @@ int readn(int sd, char *buf, int n)
     byteread = read(sd, ptr, toberead);
     if (byteread <= 0) {
       if (byteread == -1)
-	perror("read");
+	      perror("read");
       return(0);
     }
 
@@ -172,32 +138,32 @@ int readn(int sd, char *buf, int n)
   return(1);
 }
 
-/* ½ÓÊÕÊı¾İ°ü */
+/* Nháº­n gÃ³i */
 Packet *recvpkt(int sd)
 {
   Packet *pkt;
 
-  /* ¶¯Ì¬·ÖÅäÄÚ´æ */
+  /* Bá»™ nhá»› Ä‘c phÃ¢n bá»‘ rÃ´ng */
   pkt = (Packet *) calloc(1, sizeof(Packet));
   if (!pkt) {
     fprintf(stderr, "error : unable to calloc\n");
     return(NULL);
   }
 
-  /* ¶ÁÈ¡ÏûÏ¢ÀàĞÍ */
+  /* Äá»c loáº¡i tin nháº¯n */
   if (!readn(sd, (char *) &pkt->type, sizeof(pkt->type))) {
     free(pkt);
     return(NULL);
   }
 
-  /* ¶ÁÈ¡ÏûÏ¢³¤¶È */
+  /* Äá»c Ä‘á»™ dÃ i tin nháº¯n */
   if (!readn(sd, (char *) &pkt->lent, sizeof(pkt->lent))) {
     free(pkt);
     return(NULL);
   }
   pkt->lent = ntohl(pkt->lent);
 
-  /* ÎªÏûÏ¢ÄÚÈİ·ÖÅä¿Õ¼ä */
+  /* PhÃ¢n bá»• khÃ´ng gian cho ná»™i dung tin nháº¯n */
   if (pkt->lent > 0) {
     pkt->text = (char *) malloc(pkt->lent);
     if (!pkt) {
@@ -205,7 +171,7 @@ Packet *recvpkt(int sd)
       return(NULL);
     }
 
-    /* ¶ÁÈ¡ÏûÏ¢ÎÄ±¾ */
+    /*Äá»c tin nháº¯n vÄƒn báº£n */
     if (!readn(sd, pkt->text, pkt->lent)) {
       freepkt(pkt);
       return(NULL);
@@ -214,25 +180,25 @@ Packet *recvpkt(int sd)
   return(pkt);
 }
 
-/* ·¢ËÍÊı¾İ°ü */
+/* Gá»­i gÃ³i */
 int sendpkt(int sd, char typ, long len, char *buf)
 {
   char tmp[8];
   long siz;
 
-  /* °Ñ°üµÄÀàĞÍºÍ³¤¶ÈĞ´ÈëÌ×½Ó×Ö */
+  /* Viáº¿t loáº¡i vÃ  Ä‘á»™ dÃ i cá»§a gÃ³i vÃ o socket */
   bcopy(&typ, tmp, sizeof(typ));
-  siz = htonl(len);
+  siz = htonl(len); // chuyá»ƒn tá»« byte mÃ¡y chá»§ sag byte máº¡ng
   bcopy((char *) &siz, tmp+sizeof(typ), sizeof(len));
   write(sd, tmp, sizeof(typ) + sizeof(len));
 
-  /* °ÑÏûÏ¢ÎÄ±¾Ğ´ÈëÌ×½Ó×Ö */
+  /*ViÃªt tin nháº¯n vÄƒn báº£n vÃ o socket*/
   if (len > 0)
-    write(sd, buf, len);
+    write(sd, buf, len); //buff: ná»™i dung vÄƒn báº£n 
   return(1);
 }
 
-/* ÊÍ·ÅÊı¾İ°üÕ¼ÓÃµÄÄÚ´æ¿Õ¼ä */
+/*Giáº£i phÃ³ng khÃ´ng gian bá»™ nhá»› bá»‹ chiáº¿m dá»¥ng bá»Ÿi cÃ¡c gÃ³i */
 void freepkt(Packet *pkt)
 {
   free(pkt->text);

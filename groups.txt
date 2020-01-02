@@ -1,0 +1,5 @@
+4
+Room3 4
+Room5 3
+Room6 3
+room1 2

@@ -1,4 +1,4 @@
-/* ÁÄÌìÊÒ·şÎñÆ÷¶Ë³ÌĞò */
+/* Chatserver */
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,462 +12,663 @@
 #include <time.h>
 #include <errno.h>
 #include <signal.h>
+#include <unistd.h>
+#include <sys/select.h>
+
 #include "common.h"
+#include "login.h"
+#define MAXLEN 100
 
-/* ÁÄÌìÊÒ³ÉÔ±ĞÅÏ¢ */
-typedef struct _member 
+
+int max=0;
+node *current[MAXLEN];
+void readFile()
 {
-    /* ³ÉÔ±ĞÕÃû */
-    char *name;
+	FILE *fp = fopen("a.txt", "r");
+	if (fp == NULL)
+	{
+		printf("Can't open the file!");
+		exit(0);
+	}
+	char user[MAXLEN];
+	char pass[MAXLEN];
+	int status;
+	char status2[MAXLEN];
+	while (feof(fp) == 0)
+	{
+		fscanf(fp, "%s %s %s %d", user, pass, status2, &status);
+		addNode(user, pass, status2, status);
+		max++;
+	}
+}
 
-    /* ³ÉÔ± socket ÃèÊö·û */
-    int sock;
 
-    /* ³ÉÔ±ËùÊôÁÄÌìÊÒ */
-    int grid;
 
-    /* ÏÂÒ»¸ö³ÉÔ± */
-    struct _member *next;
+void writeData(char *user, char *data)
+{
+	char filename[50];
+	strcpy(filename, user);
+	strcat(filename, ".txt");
+	FILE *fp = fopen(filename, "a");
+	fprintf(fp, "%s %s", "\n", data);
+	fclose(fp);
+}
+/* ThÃ´ng tin thÃ nh viÃªn trong nhÃ³m*/
+typedef struct _member
+{
+	/* TÃªn thÃ nh viÃªn */
+	char *name;
 
-    /* Ç°Ò»¸ö³ÉÔ± */
-    struct _member *prev;
+	/* socket cá»§a thÃ nh viÃªn */
+	int sock;
+
+	/* PhÃ²ng chat */
+	int grid;
+
+	/* ThÃ nh viÃªn tiáº¿p theo */
+	struct _member *next;
+
+	/* ThÃ nh viÃªn trÆ°á»›c Ä‘Ã³ */
+	struct _member *prev;
 
 } Member;
 
-/* ÁÄÌìÊÒĞÅÏ¢ */
-typedef struct _group 
+/*ThÃ´ng tin phÃ²ng chat */
+typedef struct _group11
 {
-    /* ÁÄÌìÊÒÃû×Ö */
-    char *name;
+	/* TÃªn phÃ²ng */
+	int sock1;
+	int sock2;
+	char *name1;
+	char *name2;
+} Group11;
+Group11 *chat11[MAXPKTLEN];
+int sl = 1;
 
-    /* ÁÄÌìÊÒ×î´óÈİÁ¿£¨ÈËÊı£© */
-    int capa;
+typedef struct _group
+{
+	/* TÃªn phÃ²ng */
+	char *name;
 
-    /* µ±Ç°Õ¼ÓĞÂÊ£¨ÈËÊı£© */
-    int occu;
+	/* Sá»‘ ng tá»‘i Ä‘a */
+	int capa;
 
-    /* ¼ÇÂ¼ÁÄÌìÊÒÄÚËùÓĞ³ÉÔ±ĞÅÏ¢µÄÁ´±í */
-    struct _member *mems;
+	/* Sá»‘ ngÆ°á»i hiá»‡n táº¡i */
+	int occu;
+
+	/* Dáº¡nh sÃ¡ch liÃªn kÃ©t táº¥t cáº£ thÃ nh viÃªn trong phÃ²ng */
+	struct _member *mems;
 
 } Group;
 
-/* ËùÓĞÁÄÌìÊÒµÄĞÅÏ¢±í */
-Group *group;
-int ngroups;
 
-/* Í¨¹ıÁÄÌìÊÒÃû×ÖÕÒµ½ÁÄÌìÊÒ ID */
+/* CÃ¡c phÃ²ng chat */
+Group group[1000];
+int ngroups; // So groups
+
+/*TÃ¬m phÃ²ng theo tÃªn */
 int findgroup(char *name)
 {
-    int grid; /* ÁÄÌìÊÒID */
+	int grid; /* ID phÃ²ng trÃ² chuyá»‡n */
 
 	for (grid = 0; grid < ngroups; grid++)
 	{
-		if(strcmp(group[grid].name, name) == 0)
-			return(grid);
+		if (strcmp(group[grid].name, name) == 0)
+			return (grid);
 	}
-    return(-1);
+	return (-1);
 }
 
-/* Í¨¹ıÊÒ³ÉÔ±Ãû×ÖÕÒµ½ÊÒ³ÉÔ±µÄĞÅÏ¢ */
+int findname(char*name){
+	int m=0;
+	node *temp = head;
+	while(temp!=NULL){
+		if(strcmp(temp->username,name) == 0){
+			if(temp->state == 1) m=1;
+		}
+		temp = temp->next;
+
+	}
+	return m;
+}
+
+/* Í¨TÃ¬m thÃ´ng tin thÃ nh viÃªn theo tÃªn */
 Member *findmemberbyname(char *name)
 {
-    int grid; /* ÁÄÌìÊÒ ID */
+	int grid; /* ID phÃ²ng*/
 
-    /* ±éÀúÃ¿¸ö×é */
-    for (grid=0; grid < ngroups; grid++) 
-	{
-        Member *memb;
-
-        /* ±éÀú¸Ä×éµÄËùÓĞ³ÉÔ± */
-        for (memb = group[grid].mems; memb ; memb = memb->next)
-		{
-            if (strcmp(memb->name, name) == 0)
-	        return(memb);
-        }
-    }
-    return(NULL);
-}
-
-/* Í¨¹ı socket ÃèÊö·ûÕÒµ½ÊÒ³ÉÔ±µÄĞÅÏ¢ */
-Member *findmemberbysock(int sock)
-{
-    int grid; /* ÁÄÌìÊÒID */
-
-    /* ±éÀúËùÓĞµÄÁÄÌìÊÒ */
-    for (grid=0; grid < ngroups; grid++) 
+	/*VÃ²ng láº·p táº¥t cáº£ cÃ¡c nhÃ³m */
+	for (grid = 0; grid < ngroups; grid++)
 	{
 		Member *memb;
 
-		/* ±éÀúËùÓĞµÄµ±Ç°ÁÄÌìÊÒ³ÉÔ± */
+		/* Duyá»‡t táº¥t cáº£ thÃ nh viÃªn cho má»—i phÃ²ng  */
+		for (memb = group[grid].mems; memb; memb = memb->next)
+		{
+			if (strcmp(memb->name, name) == 0)
+				return (memb);
+		}
+	}
+	return (NULL);
+}
+
+/* Í¨TÃ¬m thÃ nh viÃªn thÃ´ng qua socket */
+Member *findmemberbysock(int sock)
+{
+	int grid; /*ID phÃ²ng*/
+
+	/* Duyá»‡t táº¥t cáº£ cÃ¡c phÃ²ng */
+	for (grid = 0; grid < ngroups; grid++)
+	{
+		Member *memb;
+
+		/* Duyá»‡t táº¥t cáº£ cÃ¡c thÃ nh viÃªn */
 		for (memb = group[grid].mems; memb; memb = memb->next)
 		{
 			if (memb->sock == sock)
-			return(memb);
+				return (memb);
 		}
-    }
-    return(NULL);
+	}
+	return (NULL);
 }
 
-/* ÍË³öÇ°µÄÇåÀí¹¤×÷ */
-void cleanup()
-{
-  char linkname[MAXNAMELEN];
-
-  /* È¡ÏûÎÄ¼şÁ´½Ó */
-  sprintf(linkname, "%s/%s", getenv("HOME"), PORTLINK);
-  unlink(linkname);
-  exit(0);
-}
-
-/* Ö÷º¯Êı³ÌĞò */
-main(int argc, char *argv[])
-{
-	int    servsock;   /* ÁÄÌìÊÒ·şÎñÆ÷¶Ë¼àÌı socket ÃèÊö·û */
-	int    maxsd;	     /* Á¬½ÓµÄ¿Í»§¶Ë socket ÃèÊö·ûµÄ×î´óÖµ */
-	fd_set livesdset, tempset; /* ¿Í»§¶Ë sockets ÃèÊö·û¼¯ */
-
-
-	/* ÓÃ»§ÊäÈëºÏ·¨ĞÔ¼ì²â */
-	if (argc != 2) 
-		{
-			fprintf(stderr, "usage : %s <groups-file>\n", argv[0]);
-			exit(1);
-		}
-
-	/* µ÷ÓÃ initgroups º¯Êı£¬³õÊ¼»¯ÁÄÌìÊÒĞÅÏ¢ */
-	if (!initgroups(argv[1]))
-		exit(1);
-
-	/* ÉèÖÃĞÅºÅ´¦Àíº¯Êı */
-	signal(SIGTERM, cleanup);
-	signal(SIGINT, cleanup);
-
-	/* ×¼±¸½ÓÊÜÇëÇó */
-	servsock = startserver(); /* ¶¨ÒåÔÚ "chatlinker.c" ÎÄ¼şÖĞ£¬
-							Ö÷ÒªÍê³É´´½¨·şÎñÆ÷Ì×½Ó×Ö£¬°ó¶¨¶Ë¿ÚºÅ£¬
-							²¢ÉèÖÃ°ÑÌ×½Ó×ÖÎª¼àÌı×´Ì¬ */
-	if (servsock == -1)
-		exit(1);
-
-	/* ³õÊ¼»¯ maxsd */
-	maxsd = servsock;
-
-	/* ³õÊ¼»¯ÃèÊö·û¼¯ */
-	FD_ZERO(&livesdset); /* ÇåÀí livesdset µÄËùÓĞµÄ±ÈÌØÎ»*/
-	FD_ZERO(&tempset);  /* ÇåÀí tempset µÄËùÓĞµÄ±ÈÌØÎ» */
-	FD_SET(servsock, &livesdset); /* ´ò¿ª·şÎñÆ÷¼àÌıÌ×½Ó×ÖµÄÌ×½Ó×Ö
-								  ÃèÊö·û servsock ¶ÔÓ¦µÄfd_set ±ÈÌØÎ» */
-
-	/* ½ÓÊÜ²¢´¦ÀíÀ´×Ô¿Í»§¶ËµÄÇëÇó */
-	while (1) 
-		{
-			int sock;    /* Ñ­»·±äÁ¿ */
-
-			/* ÌØ±ğ×¢Òâ tempset ×÷Îª select ²ÎÊıÊ±ÊÇÒ»¸ö "Öµ-½á¹û" ²ÎÊı£¬
-			select º¯Êı·µ»ØÊ±£¬tempset ÖĞ´ò¿ªµÄ±ÈÌØÎ»Ö»ÊÇ¶Á¾ÍĞ÷µÄ socket
-			ÃèÊö·û£¬ËùÒÔÎÒÃÇÃ¿´ÎÑ­»·¶¼Òª½«Æä¸üĞÂÎªÎÒÃÇĞèÒªÄÚºË²âÊÔ¶Á¾ÍĞ÷Ìõ¼ş
-			µÄ socket ÃèÊö·û¼¯ºÏ livesdset */
-			tempset = livesdset; 
-
-		
-			/* µ÷ÓÃ select º¯ÊıµÈ´ıÒÑÁ¬½ÓÌ×½Ó×ÖÉÏµÄ°üºÍÀ´×Ô
-			ĞÂµÄÌ×½Ó×ÖµÄÁ´½ÓÇëÇó */
-			select(maxsd + 1, &tempset, NULL, NULL, NULL);
-
-			/* Ñ­»·²éÕÒÀ´×Ô¿Í»§»úµÄÇëÇó */
-			for (sock=3; sock <= maxsd; sock++)
-				{
-					/* Èç¹ûÊÇ·şÎñÆ÷¼àÌı socket£¬ÔòÌø³ö½ÓÊÕÊı¾İ°ü»·½Ú£¬Ö´ĞĞ½ÓÊÜÁ¬½Ó */
-					if (sock == servsock)
-						continue;
-
-					/* ÓĞÀ´×Ô¿Í»§ socket µÄÏûÏ¢ */
-					if(FD_ISSET(sock, &tempset))
-					{
-						Packet *pkt;
-
-						/* ¶ÁÏûÏ¢ */
-						pkt = recvpkt(sock); /* º¯Êı recvpkt ¶¨ÒåÔÚ"chatlinker.c" */
-
-						if (!pkt)
-							{
-								/* ¿Í»§»ú¶Ï¿ªÁËÁ¬½Ó */
-								char *clientname;  /* host name of the client */
-
-								/* Ê¹ÓÃ gethostbyaddr£¬getpeername º¯ÊıµÃµ½ client µÄÖ÷»úÃû */
-								socklen_t len;
-								struct sockaddr_in addr;
-								len = sizeof(addr);
-								if (getpeername(sock, (struct sockaddr*) &addr, &len) == 0) 
-									{
-										struct sockaddr_in *s = (struct sockaddr_in *) &addr;
-										struct hostent *he;
-										he = gethostbyaddr(&s->sin_addr, sizeof(struct in_addr), AF_INET);
-										clientname = he->h_name;
-									}
-								else
-									printf("Cannot get peer name");
-
-								printf("admin: disconnect from '%s' at '%d'\n",
-									clientname, sock);
-
-								/* ´ÓÁÄÌìÊÒÉ¾³ı¸Ã³ÉÔ± */
-								leavegroup(sock);
-
-								/* ¹Ø±ÕÌ×½Ó×Ö */
-								close(sock);
-
-								/* Çå³ıÌ×½Ó×ÖÃèÊö·ûÔÚ livesdset ÖĞµÄ±ÈÌØÎ» */
-								FD_CLR(sock, &livesdset);
-
-							} 
-						else 
-							{
-								char *gname, *mname;
-
-								/* »ùÓÚÏûÏ¢ÀàĞÍ²ÉÈ¡ĞĞ¶¯ */
-								switch (pkt->type) 
-								{
-									case LIST_GROUPS :
-										listgroups(sock);
-										break;
-									case JOIN_GROUP :
-										gname = pkt->text;
-										mname = gname + strlen(gname) + 1;
-										joingroup(sock, gname, mname);
-										break;
-									case LEAVE_GROUP :
-										leavegroup(sock);
-										break;
-									case USER_TEXT :
-										relaymsg(sock, pkt->text);
-										break;
-								}
-
-								/* ÊÍ·Å°ü½á¹¹ */
-								freepkt(pkt);
-							}
-					}
-				}
-
-			struct sockaddr_in remoteaddr; /* ¿Í»§»úµØÖ·½á¹¹ */
-			socklen_t addrlen;
-
-			/* ÓĞÀ´×ÔĞÂµÄ¿Í»§»úµÄÁ¬½ÓÇëÇóÇëÇó */
-			if(FD_ISSET(servsock, &tempset))
-			{
-				int  csd; /* ÒÑÁ¬½ÓµÄ socket ÃèÊö·û */
-
-				/* ½ÓÊÜÒ»¸öĞÂµÄÁ¬½ÓÇëÇó */
-				addrlen = sizeof remoteaddr;
-				csd = accept(servsock, (struct sockaddr *) &remoteaddr, &addrlen);
-
-				/* Èç¹ûÁ¬½Ó³É¹¦ */
-				if (csd != -1) 
-					{
-						char *clientname;
-
-						/* Ê¹ÓÃ gethostbyaddr º¯ÊıµÃµ½ client µÄÖ÷»úÃû */
-						struct hostent *h;
-						h = gethostbyaddr((char *)&remoteaddr.sin_addr.s_addr,
-							sizeof(struct in_addr), AF_INET);
-
-						if (h != (struct hostent *) 0) 
-							clientname = h->h_name;
-						else
-							printf("gethostbyaddr failed\n");
-
-						/* ÏÔÊ¾¿Í»§»úµÄÖ÷»úÃûºÍ¶ÔÓ¦µÄ socket ÃèÊö·û */
-						printf("admin: connect from '%s' at '%d'\n",
-							clientname, csd);
-
-						/* ½«¸ÃÁ¬½ÓµÄÌ×½Ó×ÖÃèÊö·û csd ¼ÓÈëlivesdset */
-						FD_SET(csd, &livesdset);
-
-						/* ±£³Ö maxsd ¼ÇÂ¼µÄÊÇ×î´óµÄÌ×½Ó×ÖÃèÊö·û */
-						if (csd > maxsd)
-							maxsd = csd;
-					}
-				else 
-					{
-						perror("accept");
-						exit(0);
-					}
-			}
-		}
-}
-
-/* ³õÊ¼»¯ÁÄÌìÊÒÁ´±í */
-int initgroups(char *groupsfile)
+/* Khá»Ÿi táº¡o phÃ²ng chat */
+int initgroups()
 {
 	FILE *fp;
 	char name[MAXNAMELEN];
+	char cap[BUFF_SIZE];
 	int capa;
 	int grid;
 
-	/* ´ò¿ª´æ´¢ÁÄÌìÊÒĞÅÏ¢µÄÅäÖÃÎÄ¼ş */
-	fp = fopen(groupsfile, "r");
-	if (!fp) 
+	/* Má»Ÿ file lÆ°u trá»¯ thÃ´ng tin chat */
+	fp = fopen("groups.txt", "r");
+	if (!fp)
 	{
-		fprintf(stderr, "error : unable to open file '%s'\n", groupsfile);
-		return(0);
-    }
+		fprintf(stderr, "error : unable to open file 'groups.txt'\n");
+		return (0);
+	}
 
-	/* ´ÓÅäÖÃÎÄ¼şÖĞ¶ÁÈ¡ÁÄÌìÊÒµÄÊıÁ¿ */
+	/* Sá»‘ lÆ°á»£ng phÃ²ng */
 	fscanf(fp, "%d", &ngroups);
 
-	/* ÎªËùÓĞµÄÁÄÌìÊÒ·ÖÅäÄÚ´æ¿Õ¼ä */
-	group = (Group *) calloc(ngroups, sizeof(Group));
-    if (!group) 
+	/* PhÃ¢n bá»• bá»™ nhá»› cho cÃ¡c phongf */
+	//group = (Group *) calloc(ngroups, sizeof(Group));
+	if (!group)
 	{
-		fprintf(stderr, "error : unable to calloc\n");
-		return(0);
-    }
+		printf("error : unable to calloc\n");
+		return (0);
+	}
 
-	/* ´ÓÅäÖÃÎÄ¼ş¶ÁÈ¡ÁÄÌìÊÒĞÅÏ¢ */
-	for (grid =0; grid < ngroups; grid++) 
+	/*ThÃ´ng tin phÃ²ng trÃ² chuyeáº¹n tá»« file */
+	for (grid = 0; grid < ngroups; grid++)
 	{
-		/* ¶ÁÈ¡ÁÄÌìÊÒÃûºÍÈİÁ¿ */
+		/* TÃªn phÃ²ng vÃ  sá»‘ ng tá»‘i Ä‘a */
 		if (fscanf(fp, "%s %d", name, &capa) != 2)
 		{
-			fprintf(stderr, "error : no info on group %d\n", grid + 1);
-			return(0);
+			printf("error : no info on group %d\n", grid + 1);
+			return (0);
 		}
 
-    /* ½«ĞÅÏ¢´æ½ø group ½á¹¹ */
+		/* LÆ°u trá»¯ thÃ´ng tin vÃ o cáº¥u trÃºc nhÃ³m */
 		group[grid].name = strdup(name);
 		group[grid].capa = capa;
 		group[grid].occu = 0;
 		group[grid].mems = NULL;
-    }
-	return(1);
+		sprintf(cap, "%d", capa);
+		addNodeRoom(name, cap);
+	}
+	return (1);
 }
 
-/* °ÑËùÓĞÁÄÌìÊÒµÄĞÅÏ¢·¢¸ø¿Í»§¶Ë */
+int listOnline(int sock)
+{
+
+	char pktbufr[MAXPKTLEN];
+	char *bufrptr;
+	char bufrlen;
+
+	bufrptr = pktbufr;
+	node *temp = head;
+	while (temp != NULL)
+	{
+		if (temp->state == 1)
+		{
+			sprintf(bufrptr, "%s", temp->username);
+			bufrptr += strlen(bufrptr) + 1;
+
+			sprintf(bufrptr, "%s", temp->status2);
+			bufrptr += strlen(bufrptr) + 1;
+
+			sprintf(bufrptr, "%d", temp->sock);
+			bufrptr += strlen(bufrptr) + 1;
+		}
+		temp = temp->next;
+	}
+	bufrlen = bufrptr - pktbufr;
+
+	/* Gá»­i tin nháº¯n Ä‘áº¿n yÃªu cáº§u cá»§a khÃ¡ch hÃ ng */
+	sendpkt(sock, DONE, bufrlen, pktbufr);
+	return (1);
+}
+
+/* Gá»­i táº¥t cáº£ thÃ´ng tin phÃ²ng trÃ² chuyá»‡n cho khÃ¡ch hÃ ng */
 int listgroups(int sock)
 {
-	int      grid;
-	char     pktbufr[MAXPKTLEN];
-	char *   bufrptr;
-	long     bufrlen;
+	int grid,i;
+	char pktbufr[MAXPKTLEN];
+	char *bufrptr;
+	long bufrlen;
 
-	/* Ã¿Ò»¿éĞÅÏ¢ÔÚ×Ö·û´®ÖĞÓÃ NULL ·Ö¸î */
+	/* Má»—i pháº§n thÃ´ng tin Ä‘Æ°á»£c phÃ¢n tÃ¡ch báº±ng NULL trong chuá»—i */
 	bufrptr = pktbufr;
-	for (grid=0; grid < ngroups; grid++) 
+	//initgroups();
+	for (grid = 0; grid < ngroups; grid++)
 	{
-		/* »ñÈ¡ÁÄÌìÊÒÃû×Ö */
+		
+		/* Nháº­n tÃªn phÃ²ng trÃ² chuyá»‡n */
 		sprintf(bufrptr, "%s", group[grid].name);
 		bufrptr += strlen(bufrptr) + 1;
 
-		/* »ñÈ¡ÁÄÌìÊÒÈİÁ¿ */
+		/*Nháº­n cÃ´ng suáº¥t phÃ²ng trÃ² chuyá»‡n */
 		sprintf(bufrptr, "%d", group[grid].capa);
 		bufrptr += strlen(bufrptr) + 1;
 
-		/* »ñÈ¡ÁÄÌìÊÒÕ¼ÓĞÂÊ */
+		/* Nháº­n chia sáº» phÃ²ng trÃ² chuyá»‡n */
 		sprintf(bufrptr, "%d", group[grid].occu);
 		bufrptr += strlen(bufrptr) + 1;
-    }
+		
+	}
 	bufrlen = bufrptr - pktbufr;
 
-	/* ·¢ËÍÏûÏ¢¸ø»Ø¸´¿Í»§»úµÄÇëÇó */
+	/* Gá»­i tin nháº¯n Ä‘áº¿n yÃªu cáº§u cá»§a khÃ¡ch hÃ ng */
 	sendpkt(sock, LIST_GROUPS, bufrlen, pktbufr);
-	return(1);
+	return (1);
 }
 
-/* ¼ÓÈëÁÄÌìÊÒ */
-int joingroup(int sock, char *gname, char *mname)
+int processLogIn(int sock, char *username, char *pass)
 {
-	int       grid;
-	Member *  memb;
+	//check username
+	if (checkExist(username) == NULL)
+	{
+		char *errmsg = "-> Cannot find account!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	if (checkStatus(username) == 0)
+	{
+		char *errmsg = "->Account is blocked!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	if (checkPass(username, pass) == 0)
+	{
+		char *errmsg = "Password is incorrect!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	char *succmsg = "Log in successful!\n";
+	current[sock] = checkExist(username);
+	current[sock]->state = 1;
+	current[sock]->sock = sock;
+	sendpkt(sock, SUCCESS, strlen(succmsg), succmsg);
+	printf("%d\n", sock);
+	return 1;
+}
 
-	/* ¸ù¾İÁÄÌìÊÒÃû»ñµÃÁÄÌìÊÒ ID */
+int processRegister(int sock, char *username, char *pass)
+{
+	if (current[sock] != NULL)
+	{
+		char *errmsg = "->You are currently logged in. Please log out to register.\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	if (checkExist(username) != NULL)
+	{
+		char *errmsg = "-> Account existed!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	addNode(username, pass, " ", 1);
+	writeFile();
+	max++;
+	char *succmsg = "Register successful!\n";
+	sendpkt(sock, SUCCESS, strlen(succmsg), succmsg);
+	return 1;
+}
+
+int processCreatRoom(int sock, char *name, char *cap)
+{
+	if (checkExistRoom(name) != NULL)
+	{
+		char *errmsg = "-> Room existed!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	addNodeRoom(name, cap);
+
+	writeRoomFile(ngroups + 1);
+	//printf("%d\n",ngroups);
+	ngroups++;
+	//group = realloc(group, 1 * sizeof(int));
+	group[ngroups - 1].name = strdup(name);
+	group[ngroups - 1].capa = atoi(cap);
+	group[ngroups - 1].occu = 0;
+	group[ngroups - 1].mems = NULL;
+
+	//printf("%s\n",group[ngroups-1].name);
+	char *succmsg = "Create successful!\n";
+	sendpkt(sock, SUCCESS, strlen(succmsg), succmsg);
+	return 1;
+}
+
+int Update(int sock, char *status, char *username)
+{
+	/*node *temp;
+	while (temp != NULL)
+	{
+		if (strcmp(temp->username, username) == 0)
+		{
+			strcpy(temp->status2, status);
+		}
+		temp = temp->next;
+	}*/
+	strcpy(current[sock]->status2,status);
+	writeFile();
+
+	//printf("%s\n",group[ngroups-1].name);
+	char *succmsg = "Update successful!\n";
+	sendpkt(sock, SUCCESS, strlen(succmsg), succmsg);
+	return 1;
+}
+
+int processLogout(int sock, char *username)
+{
+	if (current[sock] == NULL)
+	{
+		char *errmsg = "-> You are not loged in!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	if (checkExist(username) == NULL)
+	{
+		char *errmsg = "-> Cannot find account!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	if (strcmp(current[sock]->username, username) != 0)
+	{
+		char *errmsg = "-> Account is not sign in!\n";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return 0;
+	}
+	current[sock]->state = 0;
+	current[sock] = NULL;
+	
+	char *succmsg = "Log out successful!\n";
+	sendpkt(sock, SUCCESS, strlen(succmsg), succmsg);
+
+	return 1;
+}
+
+/* Tham gia phÃ²ng chat */
+int joingroup(int sock, char *gname, char *username)
+{
+	int grid;
+	Member *memb;
+
+	/*  Nháº­n ID phÃ²ng trÃ² chuyá»‡n dá»±a trÃªn tÃªn phÃ²ng trÃ² chuyá»‡n  */
 	grid = findgroup(gname);
-	if (grid == -1) 
+	if (grid == -1)
 	{
-		char *errmsg = "no such group";
-		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* ·¢ËÍ¾Ü¾ø¼ÓÈëÏûÏ¢ */
-		return(0);
-    }
-
-	/* ¼ì²éÊÇ·ñÁÄÌìÊÒ³ÉÔ±Ãû×ÖÒÑ±»Õ¼ÓÃ */
-	memb = findmemberbyname(mname);
-
-	/* Èç¹ûÁÄÌìÊÒ³ÉÔ±ÃûÒÑ´æÔÚ£¬Ôò·µ»Ø´íÎóÏûÏ¢ */
-	if (memb) 
-	{
-		char *errmsg = "member name already exists";
-		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* ·¢ËÍ¾Ü¾ø¼ÓÈëÏûÏ¢ */
-		return(0);
-    }
-
-	/* ¼ì²éÁÄÌìÊÒÊÇ·ñÒÑÂú */
-	if (group[grid].capa == group[grid].occu) 
-	{
-		char *errmsg = "room is full";
-		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* ·¢ËÍ¾Ü¾ø¼ÓÈëÏûÏ¢ */
-		return(0);
+		char *errmsg = "This group doesn't exist!";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return (0);
 	}
 
-	/* ÎªÁÄÌìÊÒĞÂ³ÉÔ±ÉêÇëÄÚ´æ¿Õ¼äÀ´´æ´¢³ÉÔ±ĞÅÏ¢ */
-	memb = (Member *) calloc(1, sizeof(Member));
-	if (!memb) 
+	/* Kiá»ƒm tra xem tÃªn thÃ nh viÃªn cÃ³ bá»‹ trÃ¹ng k? */
+	memb = findmemberbyname(username);
+
+	/* Náº¿u tÃªn thÃ nh viÃªn trÃ² chuyá»‡n Ä‘Ã£ tá»“n táº¡i, tráº£ vá» thÃ´ng bÃ¡o lá»—i */
+	if (memb)
 	{
-		fprintf(stderr, "error : unable to calloc\n");
-		cleanup();
-    }
-	memb->name = strdup(mname);
+		char *errmsg = "member name already exists";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* gá»­i tin nháº¯n tá»« chá»‘i tham gia */
+		return (0);
+	}
+
+	if (group[grid].capa == group[grid].occu)
+	{
+		char *errmsg = "room is full";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* gá»­i tin nháº¯n tham gia tá»« chá»‘i*/
+		return (0);
+	}
+
+	/*Kiá»ƒm tra xem phÃ²ng trÃ² chuyá»‡n Ä‘Ã£ Ä‘áº§y chÆ°a*/
+	memb = (Member *)calloc(1, sizeof(Member));
+	if (!memb)
+	{
+		printf("error : unable to calloc\n");
+		// cleanup();
+	}
+	memb->name = strdup(username);
+	printf("%s , %s\n", memb->name,username);
 	memb->sock = sock;
 	memb->grid = grid;
 	memb->prev = NULL;
 	memb->next = group[grid].mems;
-	if (group[grid].mems) 
+	if (group[grid].mems)
 	{
 		group[grid].mems->prev = memb;
 	}
 	group[grid].mems = memb;
-	printf("admin: '%s' joined '%s'\n", mname, gname);
+	printf("admin: '%s' joined '%s'\n", username, gname);
 
-	/* ¸üĞÂÁÄÌìÊÒµÄÔÚÏßÈËÊı */
+	/* Cáº­p nháº­t phÃ²ng chat trá»±c tuyáº¿n */
 	group[grid].occu++;
-
-	sendpkt(sock, JOIN_ACCEPTED, 0, NULL); /* ·¢ËÍ½ÓÊÜ³ÉÔ±ÏûÏ¢ */
-	return(1);
+	current[sock]->state = 0;
+	printf("%d\n", current[sock]->sock);
+	sendpkt(sock, JOIN_ACCEPTED, 0, NULL); /* Gá»­i vÃ  nháº­n tin nháº¯n thÃ nh viÃªn */
+	fflush(stdin);
+	return (1);
 }
 
-/* Àë¿ªÁÄÌìÊÒ */
+int try(char *a){
+	node *temp = head;
+	while(1){
+		if(strcmp(temp->username,a)==0) break;
+		else temp = temp->next;
+	}
+	return temp->sock;
+}
+
+int try1(char *a)
+{
+	node *temp = head;
+	while(temp!=NULL){
+		if(strcmp(temp->username,a) == 0){
+			temp->ID = sl;
+		}
+		temp = temp->next;
+	}
+}
+
+node *findnamebysock(int sock)
+{
+	node *temp = head;
+	/* Duyá»‡t táº¥t cáº£ cÃ¡c phÃ²ng */
+	while(temp!=NULL){
+		if(temp->sock==sock){
+			return(temp);
+		}
+		temp = temp->next;
+	}
+	return (NULL);
+}
+
+int findbysock(int a){
+	int m;
+	node *temp = head;
+	while(temp!=NULL){
+		if(temp->sock==a){
+			m = temp->ID;
+		}
+		temp = temp->next;
+	}
+	return m;
+}
+
+int findother(int a){
+	printf("input other sock %d\n", a);
+	int m;
+	printf("head here %d - %d\n", head->ID, head->sock);
+	node *temp = head;
+	
+	while(temp!=NULL){
+		if(temp->ID==findbysock(a) && temp->sock!=a)
+		{
+			m=temp->sock;
+		}
+		temp = temp->next;
+	}
+	return m;
+}
+
+int changeStatus(char *name)
+{
+	node *temp = head;
+	while(temp!=NULL)
+	{
+		if(strcmp(temp->username,name)==0) {
+		temp->state = 0;
+		//printf("%s", temp->username);
+		}
+		temp = temp-> next;
+	}
+	
+}
+
+int join11(int sock, char *uname, char *username)
+{
+	int m=0,n;
+	node *cur1,*cur2;
+	/* KhÃ´ng thá»ƒ tá»± chat vá»›i báº£n thÃ¢n */
+	//try(uname);
+
+	if(strcmp(current[sock]->username,uname)==0)
+	{
+		char *errmsg = "Can't talk with my self";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg); /* gá»­i tin nháº¯n tá»« chá»‘i tham gia */
+		return (0);
+	}
+	if(!findname(uname))
+	{
+		char *errmsg = "This user isn't online!";
+		sendpkt(sock, JOIN_REJECTED, strlen(errmsg), errmsg);
+		return (0);
+	}
+	printf("start new chat1v1 %s - %s\n", username, uname);
+
+	try1(username);
+	try1(uname);
+	sl++;
+	printf("send initial pkt to %s from %s - len %zd\n", uname, current[sock]->username, strlen(current[sock]->username));
+	sendpkt(try(uname),REQUEST,strlen(current[sock]->username),current[sock]->username);	
+	printf("send join accepted pkt to %s\n", uname);
+	sendpkt(sock, JOIN_ACCEPTED, 0, NULL);
+	printf("sent join accepted pkt to %s\n", uname);
+	changeStatus(uname);
+	changeStatus(username);
+	fflush(stdin);
+	printf("flushed stdin %s\n", uname);
+	return (1);
+}
+
+int changeStatus1(int sock)
+{
+	node *temp = head;
+	while(temp!=NULL)
+	{
+		if(temp->sock==sock) temp->state = 1;
+		temp = temp-> next;
+	}
+}
+
+int leave11(int sock){
+	changeStatus1(sock);
+	changeStatus1(findother(sock));
+	sendpkt(findother(sock), QUIT, 0, NULL);
+}
+
+/* Rá»i khá»i phÃ²ng */
 int leavegroup(int sock)
 {
 	Member *memb;
-
-	/* µÃµ½ÁÄÌìÊÒ³ÉÔ±ĞÅÏ¢ */
+	node *temp;
+	/* Nháº­n thÃ´ng tin thÃ nh viÃªn phÃ²ng chat */
+	temp = findnamebysock(sock);
 	memb = findmemberbysock(sock);
-	if (!memb) 
-		return(0);
+	if (!memb)
+		return (0);
 
-	/* ´ÓÁÄÌìÊÒĞÅÏ¢½á¹¹ÖĞÉ¾³ı memb ³ÉÔ± */
-	if (memb->next) 
-		memb->next->prev = memb->prev; /* ÔÚÁÄÌìÊÒ³ÉÔ±Á´±íµÄÎ²²¿ */
+	/*XÃ³a thÃ nh viÃªn */
+	if (memb->next)
+		memb->next->prev = memb->prev; /* Cuá»‘i ds thÃ nh viÃªn phÃ²ng chat*/
 
 	/* remove from ... */
-	if (group[memb->grid].mems == memb) /* ÔÚÁÄÌìÊÒ³ÉÔ±Á´±íµÄÍ·²¿ */
+	if (group[memb->grid].mems == memb) /*Äáº§u danh sÃ¡ch liÃªn káº¿t cá»§a cÃ¡c thÃ nh viÃªn phÃ²ng chat */
 		group[memb->grid].mems = memb->next;
 
-	else 
-		memb->prev->next = memb->next; /* ÔÚÁÄÌìÊÒ³ÉÔ±Á´±íµÄÖĞ²¿ */
-	
+	else
+		memb->prev->next = memb->next; /*á» giá»¯a ds*/
+
 	printf("admin: '%s' left '%s'\n",
-		memb->name, group[memb->grid].name);
+		   temp->username, group[memb->grid].name);
 
-	/* ¸üĞÂÁÄÌìÊÒµÄÕ¼ÓĞÂÊ */
+	/*Cáº­p nháº­t chia sáº» phÃ²ng chat*/
 	group[memb->grid].occu--;
-
-	/* ÊÍ·ÅÄÚ´æ */
-	free(memb->name);
+	temp->state = 1;
+	/* Giáº£i phÃ³ng bá»™ nhá»›*/
+	//free(memb->sock);
 	free(memb);
-	return(1);
+	return (1);
 }
 
-/* °Ñ³ÉÔ±µÄÏûÏ¢·¢ËÍ¸øÆäËûÁÄÌìÊÒ³ÉÔ± */
+char *name(int sock){
+	char *name;
+	node *temp= head;
+	while(temp!=NULL)
+	{
+		if(temp->sock==sock) {strcpy(name,temp->username);}
+		temp=temp->next;
+	}
+	return name;
+}
+
+int givemsg(int sock, char *text){
+	char pktbufr[MAXPKTLEN];
+	char *bufrptr;
+	long bufrlen;
+	int tnt;
+	node *temp= head;
+	tnt = findbysock(sock);
+	/* ThÃªm tÃªn ngÆ°á»i gá»­i trc vÄƒn báº£n tin nháº¯n */
+	bufrptr = pktbufr;
+	strcpy(bufrptr, text);
+	bufrptr += strlen(bufrptr) + 1;
+	bufrlen = bufrptr - pktbufr;
+	printf("other sock %d\n", findother(sock));
+	sendpkt(findother(sock),USER_TEXT1, bufrlen,pktbufr);
+	printf("%s", pktbufr);
+	/* TruyÃªn tin nháº¯n Ä‘áº¿n cÃ¡c thÃ nh viÃªn khÃ¡c trong phÃ²ng*/
+		/*Bá» qua ngÆ°á»i gá»­i */
+	fflush(stdin);
+	printf("%s", text);
+	return (1);
+}
+
+/* Gá»­i tin nháº¯n Ä‘Ãªn cÃ¡c thÃ nh viÃªn khÃ¡c trong phÃ²ng chat */
 int relaymsg(int sock, char *text)
 {
 	Member *memb;
@@ -475,32 +676,252 @@ int relaymsg(int sock, char *text)
 	char pktbufr[MAXPKTLEN];
 	char *bufrptr;
 	long bufrlen;
-
-	/* ¸ù¾İ socket ÃèÊö·û»ñµÃ¸ÃÁÄÌìÊÒ³ÉÔ±µÄĞÅÏ¢ */
+	//char m[MAXLEN];
+	node *temp;
+	/* Nháº­n thÃ´ng tin cá»§a thÃ nh viÃªn qua socket */
 	sender = findmemberbysock(sock);
+	temp = findnamebysock(sock);
 	if (!sender)
 	{
-		fprintf(stderr, "strange: no member at %d\n", sock);
-		return(0);
+		printf("strange: no member at %d\n", sock);
+		return (0);
 	}
-
-	/* °Ñ·¢ËÍÕßµÄĞÕÃûÌí¼Óµ½ÏûÏ¢ÎÄ±¾Ç°±ß */
+	//temp = findnamebysock(sock);
+	/* ThÃªm tÃªn ngÆ°á»i gá»­i trc vÄƒn báº£n tin nháº¯n */
 	bufrptr = pktbufr;
-	strcpy(bufrptr,sender->name);
+	strcpy(bufrptr, temp->username);
+	printf("%s\n",bufrptr);
 	bufrptr += strlen(bufrptr) + 1;
 	strcpy(bufrptr, text);
 	bufrptr += strlen(bufrptr) + 1;
 	bufrlen = bufrptr - pktbufr;
-
-	/* ¹ã²¥¸ÃÏûÏ¢¸ø¸Ã³ÉÔ±ËùÔÚÁÄÌìÊÒµÄÆäËû³ÉÔ± */
+	/* TruyÃªn tin nháº¯n Ä‘áº¿n cÃ¡c thÃ nh viÃªn khÃ¡c trong phÃ²ng*/
 	for (memb = group[sender->grid].mems; memb; memb = memb->next)
 	{
-		/* Ìø¹ı·¢ËÍÕß */
-		if (memb->sock == sock) 
-			continue;
-		sendpkt(memb->sock, USER_TEXT, bufrlen, pktbufr); /* ¸øÁÄÌìÊÒÆäËû³ÉÔ±  ·¢ËÍÏûÏ¢£¨TCPÊÇÈ«Ë«¹¤µÄ£© */
+		/*Bá» qua ngÆ°á»i gá»­i */
+		if (memb->sock == sock)
+		{			continue;}
+		sendpkt(memb->sock, USER_TEXT, bufrlen, pktbufr); /* Gá»­i tin nháº¯n cho cÃ¡c thÃ nh viÃªn khÃ¡c trong phÃ²ng trÃ² chuyá»‡n (TCP lÃ  song cÃ´ng hoÃ n toÃ n) */
 	}
-	printf("%s: %s", sender->name, text);
-	return(1);
+	//printf("%d\n", sender->sock);
+	printf("%s: %s", temp->username, text);
+	return (1);
 }
 
+int repmenu(int sock, char *text){
+	sendpkt(sock,MENU,strlen(text),text);
+	return (1);
+}
+
+/*main*/
+int main(int argc, char *argv[])
+{
+	int servsock;			   /* MÃ´ táº£ socket mÃ¡y chá»§ */
+	int maxsd;				   /* Sá»‘ mÃ¡y tá»‘i Ä‘a cho phÃ©p káº¿t ná»‘i Ä‘áº¿n socketÖµ */
+	fd_set livesdset, tempset; /* Bá»™ thÄƒm dÃ² socket*/
+	//readFileRoom();
+	readFile();
+	//initgroups();
+	/*Check cÃº phÃ¡p */
+	if (argc != 2)
+	{
+		printf("Wrong syntax!!!\n--> Correct Syntax: ./server PortNumber\n");
+		return 0;
+	}
+
+	/* Khá»Ÿi táº¡o thÃ´ng tin phÃ²ng */
+	if (!initgroups())
+		exit(1);
+
+	/* Chá»©c nÄƒng xá»­ lÃ­ tÃ­n hiá»‡u */
+	// signal(SIGTERM, cleanup);
+	// signal(SIGINT, cleanup);
+
+	/* Sáºµn sÃ ng nháº­n yÃªu cáº§u */
+	servsock = startserver(argv[1]); /*Äc xÃ¡c Ä‘á»‹nh trong chatlinker.c, HoÃ n thÃ nh socket, port, vÃ  chuyá»ƒn socket sag listen */
+	if (servsock == -1)
+		exit(1);
+
+	/* Khá»Ÿi táº¡o maxsd */
+	maxsd = servsock;
+
+	/* Khá»Ÿi táº¡o bá»™ thÄƒm dÃ² */
+	FD_ZERO(&livesdset);		  /* Khá»Ÿi táº¡o bá»™ thÄƒm dÃ² livesdset*/
+	FD_ZERO(&tempset);			  /* Khá»Ÿi táº¡o bá»™ thÄƒm dÃ² tempset */
+	FD_SET(servsock, &livesdset); /*ThÃªm sercesock vÃ o livesdset*/
+
+	/* Xá»­ lÃ½ yÃªu cáº§u */
+	while (1)
+	{
+		int sock; /* vÃ²ng láº·p */
+
+		tempset = livesdset;
+
+		/* YÃªu cáº§u liÃªn káº¿t tá»›i socket ms*/
+		select(maxsd + 1, &tempset, NULL, NULL, NULL);
+
+		/* vÃ²ng láº·p */
+		for (sock = 3; sock <= maxsd; sock++)
+		{
+			/* Náº¿u mÃ¡y chá»§ láº¯ng nghe á»• cáº¯m, nÃ³ sáº½ nháº£y ra khá»i gÃ³i nháº­n vÃ  thá»±c hiá»‡n káº¿t ná»‘i cháº¥p nháº­n */
+			if (sock == servsock)
+				continue;
+
+			/* CÃ³ má»™t tin nháº¯n tá»« socket mÃ¡y khÃ¡ch */
+			if (FD_ISSET(sock, &tempset))
+			{
+				Packet *pkt;
+
+				/* Äá»c tin nháº¯n */
+				pkt = recvpkt(sock); /* HÃ m recvpkt Ä‘Æ°á»£c Ä‘á»‹nh nghÄ©a trong "chatlinker.c" */
+
+				if (!pkt)
+				{
+					/* MÃ¡y khÃ¡ch bá»‹ ngáº¯t káº¿t ná»‘ */
+					char *clientname; /* TÃªn mÃ¡y khÃ¡ch */
+
+					/* Sá»­ dá»¥ng hÃ m gethostbyaddr, getpeername Ä‘á»ƒ láº¥y tÃªn mÃ¡y khÃ¡ch */
+					socklen_t len;
+					struct sockaddr_in addr;
+					len = sizeof(addr);
+					if (getpeername(sock, (struct sockaddr *)&addr, &len) == 0)
+					{
+						struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+						struct hostent *he;
+						he = gethostbyaddr(&s->sin_addr, sizeof(struct in_addr), AF_INET);
+						clientname = he->h_name;
+					}
+					else
+						printf("Cannot get peer name/n");
+
+					printf("admin: disconnect from '%s' at '%d'\n",
+						   clientname, sock);
+
+					/* XÃ³a thÃ nh viÃªn khá»i phÃ²ng trÃ² chuyá»‡n */
+					leavegroup(sock);
+
+					close(sock);
+
+					/* XÃ³a sock khá»i bá»™ thÄƒm dÃ² livesdset */
+					FD_CLR(sock, &livesdset);
+				}
+				else
+				{
+					//CHEN LOGIN VAO DAY
+
+					char *gname, *mname, *username, *pass, *name, *uname, *status;
+					char *cap;
+					/* loáº¡i hÃ nh Ä‘á»™ng */
+				
+					switch (pkt->type)
+					{
+						
+					case REGISTER:
+						username = pkt->text;
+						pass = username + strlen(username) + 1;
+						processRegister(sock, username, pass);
+						break;
+					case CREAT_ROOM:
+						name = pkt->text;
+						cap = name + strlen(name) + 1;
+						processCreatRoom(sock, name, cap);
+						break;
+					case UPDATE:
+						printf("a");
+						name = pkt->text;
+						Update(sock, name, current[sock]->username);
+						break;
+					case LOG_IN:
+						username = pkt->text;
+						pass = username + strlen(username) + 1;
+						processLogIn(sock, username, pass);
+						break;
+					case LOG_OUT:
+						username = pkt->text;
+						processLogout(sock, username);
+						break;
+					case JOIN_2:
+						username = pkt->text;
+						join11(sock,username, current[sock]->username);
+						freepkt(pkt);
+						break;
+					case LIST_GROUPS:
+						listgroups(sock);
+						break;
+					case JOIN_GROUP:
+						gname = pkt->text;
+						joingroup(sock, gname, current[sock]->username);
+						break;
+					case DONE:
+						listOnline(sock);
+						break;
+					case LEAVE_GROUP:
+						leavegroup(sock);
+						break;
+					case USER_TEXT:
+						relaymsg(sock, pkt->text);
+						break;
+					case MENU:
+						repmenu(sock,pkt->text);
+						break;
+					case USER_TEXT1:
+
+						givemsg(sock,pkt->text);
+						break;
+					case QUIT:
+						leave11(sock);
+						break;
+					}
+
+					/*Cáº¥u trÃºc gÃ³i phÃ¡t hÃ nh */
+					freepkt(pkt);
+				}
+			}
+		}
+
+		struct sockaddr_in remoteaddr; /* cáº¥u trÃºc Ä‘á»‹a chá»‰ mÃ¡y khÃ¡ch */
+		socklen_t addrlen;
+
+		/* CÃ“ má»™t y/c tá»« 1 user má»›i */
+		if (FD_ISSET(servsock, &tempset))
+		{
+			int csd; /*mÃ´ táº£ socket Ä‘Æ°á»£c káº¿t ná»‘i */
+
+			/* Cháº¥p nháº­n yÃªu cáº§u káº¿t ná»‘i má»›i */
+			addrlen = sizeof remoteaddr;
+			csd = accept(servsock, (struct sockaddr *)&remoteaddr, &addrlen);
+
+			/* Káº¿t ná»‘i thÃ nh cÃ´ng */
+			if (csd != -1)
+			{
+				char *clientname;
+
+				/* Nháº­n tÃªn mÃ¡y chá»§ cá»§a khÃ¡ch hÃ ng báº±ng cÃ¡ch sá»­ dá»¥ng chá»©c nÄƒng gethostbyaddr*/
+				struct hostent *h;
+				h = gethostbyaddr((char *)&remoteaddr.sin_addr.s_addr,
+								  sizeof(struct in_addr), AF_INET);
+
+				if (h != (struct hostent *)0)
+					clientname = h->h_name;
+				else
+					printf("gethostbyaddr failed\n");
+
+				/* Hiá»ƒn thá»‹ tÃªn mÃ¡y chá»§ cá»§a mÃ¡y khÃ¡ch vÃ  bá»™ mÃ´ táº£ á»• cáº¯m tÆ°Æ¡ng á»©ng  */
+				printf("admin: connect from '%s' at '%d'\n",
+					   clientname, csd);
+
+				/*ThÃªm csd vÃ o livesdset */
+				FD_SET(csd, &livesdset);
+
+				/*maxsd: Socket lá»›n nháº¥t */
+				if (csd > maxsd)
+					maxsd = csd;
+			}
+			else
+			{
+				perror("accept");
+				exit(0);
+			}
+		}
+	}
+}

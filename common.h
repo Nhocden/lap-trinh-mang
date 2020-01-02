@@ -1,35 +1,49 @@
 /*--------------------------------------------------------------------*/
-/* ·şÎñÆ÷¶Ë¿ÚĞÅÏ¢ */
+/* ThÃ´ng tin cá»•ng mÃ¡y chá»§ */
 #define PORTLINK ".chatport"
 
-/* »º´æÏŞÖÆ */
+/* Giá»›i háº¡n bá»™ nhá»› */
 #define MAXNAMELEN 256
 #define MAXPKTLEN  2048
 
-/* ĞÅÏ¢ÀàĞÍµÄ¶¨Òå */
+/*Äá»‹nh nghÄ©a 1 sá»‘ biáº¿n*/
 #define LIST_GROUPS    0
 #define JOIN_GROUP     1
 #define LEAVE_GROUP    2
 #define USER_TEXT      3
 #define JOIN_REJECTED  4
 #define JOIN_ACCEPTED  5
+#define LOG_IN         6
+#define LOG_OUT        7
+#define REGISTER       8
+#define SUCCESS        9
+#define CREAT_ROOM     10
+#define UNDONE         11
+#define DONE           12
+#define JOIN_2         13
+#define UPDATE         14
+#define REQUEST        15
+#define QUIT           16
+#define REFRESH        17
+#define MENU           18
+#define USER_TEXT1     19
 
-/* Êı¾İ°ü½á¹¹ */
+/* Cáº¥u truct _packet */
 typedef struct _packet {
 
-  /* Êı¾İ°üÀàĞÍ */
+  /* Loáº¡i gÃ³i */
   char      type;
 
-  /* Êı¾İ°üÄÚÈİ³¤¶È */
+  /* Äá»™ dÃ i ná»™i dung gÃ³i */
   long      lent;
 
-  /* Êı¾İ°üÄÚÈİ */
+  /* Ná»™i dung gÃ³i */
   char *    text;
 
 } Packet;
 
 extern int startserver();
-extern int locateserver();
+extern int hooktoserver();
 
 extern Packet *recvpkt(int sd);
 extern int sendpkt(int sd, char typ, long len, char *buf);
